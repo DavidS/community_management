@@ -1,0 +1,96 @@
+[
+  {
+    "repo_name": "community_management",
+    "github_namespace": "underscorgan"
+  },
+  {
+    "repo_name": "ace",
+    "github_namespace": "puppetlabs",
+    "gem_name": "agentless-catalog-executor"
+  },
+  {
+    "repo_name": "ace-vanagon",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "action-litmus_parallel",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "action-litmus_spec",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet_litmus",
+    "github_namespace": "puppetlabs",
+    "gem_name": "puppet_litmus"
+  },
+  {
+    "repo_name": "beaker-i18n_helper",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "beaker-module_install_helper",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "beaker-puppet_install_helper",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "beaker-task_helper",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "beaker-testmode_switcher",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "dependency_checker",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "litmus_image",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "net_http_unix",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "pdksync",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "platform_checker",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet-approved",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet-lint-i18n",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet-resource_api",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet-strings",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "puppet_pot_generator",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "rubocop-i18n",
+    "github_namespace": "puppetlabs"
+  },
+  {
+    "repo_name": "ruby-pwsh",
+    "github_namespace": "puppetlabs"
+  }
+]

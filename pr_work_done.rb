@@ -6,125 +6,116 @@
 # the number of merged prs
 # the number of comments made on prs
 
+require 'concurrent'
+require 'concurrent/executor/fixed_thread_pool'
 require 'optparse'
 require 'csv'
+require 'pry'
 require_relative 'octokit_utils'
 
-options = {}
-options[:oauth] = ENV['GITHUB_COMMUNITY_TOKEN'] if ENV['GITHUB_COMMUNITY_TOKEN']
-parser = OptionParser.new do |opts|
-  opts.banner = 'Usage: pr_work_done.rb [options]'
+modules = JSON.parse(File.read('modules.json'))
+modules.each { |m| m[:type] = 'module' }
+tools = JSON.parse(File.read('tools.json'))
+tools.each { |m| m[:type] = 'tool' }
+repos = tools + modules
 
-  opts.on('-n', '--namespace NAME', 'GitHub namespace. Required.') { |v| options[:namespace] = v }
-  opts.on('-r', '--repo-regex REGEX', 'Repository regex') { |v| options[:repo_regex] = v }
-  opts.on('-t', '--oauth-token TOKEN', 'OAuth token. Required.') { |v| options[:oauth] = v }
+options = { namespace: 'puppetlabs' }
+options[:oauth] = ENV['GITHUB_TOKEN'] # if ENV['GITHUB_COMMUNITY_TOKEN']
 
-  # default filters
-  opts.on('--puppetlabs', 'Select Puppet Labs\' modules') do
-    options[:namespace] = 'puppetlabs'
-    options[:repo_regex] = '^puppetlabs-'
-  end
-
-  opts.on('--puppetlabs-supported', 'Select only Puppet Labs\' supported modules') do
-    options[:namespace] = 'puppetlabs'
-    options[:repo_regex] = OctokitUtils::SUPPORTED_MODULES_REGEX
-  end
-
-  opts.on('--voxpupuli', 'Select Voxpupuli modules') do
-    options[:namespace] = 'voxpupuli'
-    options[:repo_regex] = '^puppet-'
-  end
+# thanks, google!
+def to_sheets(time)
+  time&.getutc&.strftime '%Y-%m-%d %H:%M:%S'
 end
 
-parser.parse!
+# running this too often with a high thread count leads to temporary API lock out
+pool = Concurrent::FixedThreadPool.new(2)
+# mutex = Mutex.new
 
-missing = []
-missing << '-n' if options[:namespace].nil?
-missing << '-t' if options[:oauth].nil?
-unless missing.empty?
-  puts "Missing options: #{missing.join(', ')}"
-  puts parser
-  exit
-end
+pr_futures = []
+comment_futures = []
 
-options[:repo_regex] = '.*' if options[:repo_regex].nil?
+repos.each do |repo_data|
+  repo = repo_data['github_namespace'] + '/' + repo_data['repo_name']
 
-util = OctokitUtils.new(options[:oauth])
-repos = util.list_repos(options[:namespace], options)
+  pr_futures << Concurrent::Promises.future_on(pool) do
+    util = OctokitUtils.new(options[:oauth])
+    puts "#{repo}: fetching PRs"
 
-number_of_weeks_to_show = 10
+    fetched_prs = util.client.pulls(repo, state: 'all')
 
-def date_of_next(day)
-  date  = Date.parse(day)
-  delta = date > Date.today ? 0 : 7
-  date + delta
-end
+    puts "#{repo}: got #{fetched_prs.length} PRs"
+    fetched_prs.map do |pr|
+      pr_labels = { feature: 0, enhancement: 0, bugfix: 0, maintenance: 0, all: 0 }
+      pr_labels[:"backwards-incompatible"] = 0
+      pr.labels.each do |label|
+        # label_data << [repo, label.url, pr.url, label.name, pr.created_at]
+        pr_labels[label.name.intern] ||= 0
+        pr_labels[label.name.intern] += 1
+        pr_labels[:all] += 1
+      end
 
-# find next wedenesday, set boundries
-right_bound = date_of_next 'Wednesday'
-left_bound = right_bound - 7
-# since = (right_bound - (number_of_weeks_to_show * 7))
-
-all_merged_pulls = []
-all_closed_pulls = []
-comments = []
-members_of_organisation = {}
-
-# gather all commments / merges / closed in our time range (since)
-repos.each do |repo|
-  closed_pr_information_cache = util.fetch_async("#{options[:namespace]}/#{repo}} ")
-  # closed prs
-  all_closed_pulls.concat(util.fetch_unmerged_pull_requests(closed_pr_information_cache))
-  # merged prs
-  all_merged_pulls.concat(util.fetch_merged_pull_requests(closed_pr_information_cache))
-  # find organisation members, if we havent already
-  if members_of_organisation.empty?
-    members_of_organisation = util.puppet_organisation_members(all_merged_pulls) unless all_merged_pulls.size.zero?
-  end
-  # all comments made by organisation members
-  closed_pr_information_cache.each do |pull|
-    next if pull[:issue_comments].empty?
-
-    pull[:issue_comments].each do |comment|
-      comments.push(comment) if members_of_organisation.key?(comment.user.login)
+      # pr_data << [repo,
+      [
+        repo,
+        pr.html_url,
+        pr.user.login,
+        pr.author_association,
+        pr.state,
+        to_sheets(pr.created_at),
+        to_sheets(pr.merged_at),
+        to_sheets(pr.closed_at),
+        repo_data[:type],
+        pr_labels[:"backwards-incompatible"],
+        pr_labels[:feature] + pr_labels[:enhancement],
+        pr_labels[:bugfix],
+        pr_labels[:maintenance],
+        pr_labels[:all]
+      ]
     end
   end
 
-  puts "repo #{repo}"
-end
+  comment_futures << Concurrent::Promises.future_on(pool) do
+    util = OctokitUtils.new(options[:oauth])
+    puts "#{repo}: fetching comments"
 
-week_data = []
-# for gathered comments / merges / closed, which week does it belong to
-(0..number_of_weeks_to_show - 1).each do |_week_number|
-  # find closed
-  closed = 0
-  all_closed_pulls.each do |pull|
-    closed += 1 if (pull[:closed_at] < right_bound.to_time) && (pull[:closed_at] > left_bound.to_time)
-  end
-  # find merged
-  merged = 0
-  all_merged_pulls.each do |pull|
-    merged += 1 if (pull[:closed_at] < right_bound.to_time) && (pull[:closed_at] > left_bound.to_time)
-  end
-  # find commments from puppet
-  comment_count = 0
-  comments.each do |iter|
-    comment_count += 1 if (iter[:created_at] < right_bound.to_time) && (iter[:created_at] > left_bound.to_time)
-  end
+    comments = util.client.issues_comments(repo, since: Time.new(2018))
 
-  row = { 'week ending on' => right_bound, 'closed' => closed, 'commented' => comment_count, 'merged' => merged }
-  week_data.push(row)
-  # move boundries
-  right_bound = left_bound
-  left_bound = right_bound - 7
-end
-
-# reverse week_data to give it in chronological order
-week_data = week_data.reverse
-
-CSV.open('pr_work_done.csv', 'w') do |csv|
-  csv << ['week ending on', 'closed', 'commented', 'merged']
-  week_data.each do |week|
-    csv << [week['week ending on'], week['closed'], week['commented'], week['merged']]
+    puts "#{repo}: got #{comments.length} comments"
+    comments.map do |comment|
+      [
+        repo,
+        comment.html_url,
+        comment.user.login,
+        comment.author_association,
+        to_sheets(comment.created_at),
+        to_sheets(comment.updated_at),
+        repo_data[:type]
+      ]
+    end
   end
 end
+
+puts 'waiting for results'
+
+pr_data = Concurrent::Promises.zip(*pr_futures).value!.flatten(1)
+comment_data = Concurrent::Promises.zip(*comment_futures).value!.flatten(1)
+
+binding.pry
+
+pool.shutdown
+pool.wait_for_termination
+
+puts 'writing files'
+
+CSV.open('pr_stats.csv', 'wb') do |pr_file|
+  pr_file << %w[repo url author author_association state created_at merged_at closed_at type breaking feature bugfix maintenance all_labels]
+  pr_data.each { |d| pr_file << d }
+end
+CSV.open('comment_stats.csv', 'wb') do |comment_file|
+  comment_file << %w[repo comment_url author author_association created_at updated_at type]
+  comment_data.each { |d| comment_file << d }
+end
+# CSV.open('label_stats.csv', 'wb') do |label_file|
+#   label_file << %w[repo label_url pr_url name labeled_at]
+#   label_data.each { |d| label_file << d }
+# end
