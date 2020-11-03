@@ -42,3 +42,4 @@ build/
 .rvmrc
 
 /Gemfile.lock
+github_schema.json
