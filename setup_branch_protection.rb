@@ -38,9 +38,11 @@ client = util.client
 #   required_conversation_resolution: { enabled: false }
 # }
 
-parsed = load_url(options)
-parsed.each do |_k, v|
-  repo_name = (v['github']).to_s
+# parsed = load_url(options)
+# parsed.each do |_k, v|
+#   repo_name = (v['github']).to_s
+['yumrepo_core','cron_core','mount_core','augeas_core','sshkeys_core','host_core','selinux_core','zfs_core','zone_core'].each do |repo|
+  repo_name = "puppetlabs/puppetlabs-#{repo}"
   begin
     client.unprotect_branch(repo_name, 'main', accept: 'application/vnd.github.luke-cage-preview+json')
   rescue StandardError => e
